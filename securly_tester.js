@@ -1,20 +1,28 @@
 /**
- * Checks the Securly status for a given URL and Email.
- * * @param {string} email - The student email address
- * @param {string} targetUrl - The website to test
- * @param {string} [proxyPrefix] - Optional: A URL prefix for a CORS proxy (e.g., 'https://cors-anywhere.herokuapp.com/')
- * @returns {Promise<string>} - Returns "BLOCKED", "ALLOWED", "UNKNOWN", or "ERROR"
+ * PROXY CONFIGURATION
+ * To remove the proxy, simply make this function return the 'url' directly:
+ * const applyProxy = (url) => url;
  */
-export async function checkSecurlyStatus(email, targetUrl, proxyPrefix = '') {
+const applyProxy = (targetUrl) => {
+    // Current: uses corsproxy.io
+    return 'https://corsproxy.io/?' + encodeURIComponent(targetUrl);
+};
+
+/**
+ * Main Check Function
+ * @param {string} email - Student email
+ * @param {string} urlToCheck - The URL to test
+ */
+export async function checkSecurly(email, urlToCheck) {
     const SECURLY_SERVER = 'https://useast-www.securly.com';
 
-    // 1. Normalize the URL
-    let cleanUrl = targetUrl.trim();
+    // 1. Normalize URL
+    let cleanUrl = urlToCheck.trim();
     if (!cleanUrl.startsWith('http')) {
         cleanUrl = 'https://' + cleanUrl;
     }
 
-    // 2. Extract Hostname
+    // 2. Get Hostname safely
     let hostname;
     try {
         hostname = new URL(cleanUrl).hostname;
@@ -22,13 +30,12 @@ export async function checkSecurlyStatus(email, targetUrl, proxyPrefix = '') {
         hostname = cleanUrl;
     }
 
-    // 3. Construct the Securly API URL
-    // We use URLSearchParams to safely encode the parameters
+    // 3. Build Securly API Parameters
     const params = new URLSearchParams({
         useremail: email,
         reason: 'crextn',
         host: hostname,
-        url: btoa(cleanUrl), // Base64 encode the target URL
+        url: btoa(cleanUrl), // URL must be Base64 encoded
         msg: '',
         ver: '2.97.13',
         cu: SECURLY_SERVER + '/crextn',
@@ -38,22 +45,19 @@ export async function checkSecurlyStatus(email, targetUrl, proxyPrefix = '') {
 
     const directApiUrl = `${SECURLY_SERVER}/crextn/broker?${params.toString()}`;
     
-    // Apply proxy if provided
-    const finalUrl = proxyPrefix + directApiUrl;
+    // 4. Wrap with Proxy
+    const finalUrl = applyProxy(directApiUrl);
 
     try {
         const response = await fetch(finalUrl);
         const text = await response.text();
 
-        if (text.includes('DENY')) {
-            return 'BLOCKED';
-        } else if (text.includes('ALLOW')) {
-            return 'ALLOWED';
-        } else {
-            return 'UNKNOWN';
-        }
+        if (text.includes('DENY')) return 'BLOCKED';
+        if (text.includes('ALLOW')) return 'ALLOWED';
+        return 'UNKNOWN';
+        
     } catch (error) {
-        console.error("Check failed:", error);
+        console.error("Fetch error:", error);
         return 'ERROR';
     }
 }
